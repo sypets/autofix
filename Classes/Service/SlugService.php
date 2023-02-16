@@ -213,29 +213,4 @@ class SlugService
         }
         return $queryBuilder;
     }
-
-    /**
-     * Function reused from SlugHelper, but can't use it there, because it is protected
-     *
-     * @return QueryBuilder
-     */
-    protected function createPreparedQueryBuilder(string $tableName, string $fieldName, string $languageFieldName): QueryBuilder
-    {
-        $fieldNames = ['uid', 'pid', $fieldName];
-        $fieldNames[] = $languageFieldName;
-        $languageParentFieldName = $GLOBALS['TCA'][$tableName]['ctrl']['transOrigPointerField'] ?? null;
-        if (is_string($languageParentFieldName)) {
-            $fieldNames[] = $languageParentFieldName;
-        }
-
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($tableName);
-        $queryBuilder->getRestrictions()
-            ->removeAll()
-            ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
-        $queryBuilder
-            ->select(...$fieldNames)
-            ->from($tableName);
-        return $queryBuilder;
-    }
-
 }

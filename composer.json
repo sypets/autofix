@@ -1,0 +1,48 @@
+{
+	"name": "sypets/autofix",
+	"type": "typo3-cms-extension",
+	"description": "Perform automatic fixes on the command line",
+	"license": [
+		"GPL-2.0-or-later"
+	],
+	"keywords": [
+		"TYPO3",
+		"TYPO3 extension",
+		"cleanup",
+		"fix",
+		"cli"
+	],
+	"authors": [
+		{
+			"name": "Sybille Peters",
+			"email": "sypets@gmx.de",
+			"role": "Developer"
+		}
+	],
+	"config": {
+		"sort-packages": true,
+		"vendor-dir": ".Build/vendor",
+		"bin-dir": ".Build/bin",
+		"allow-plugins": {
+			"typo3/cms-composer-installers": true,
+			"typo3/class-alias-loader": true
+		}
+	},
+	"require": {
+		"friendsofphp/php-cs-fixer": "^3.2",
+		"phpstan/phpstan": "^1.8.2",
+		"typo3/cms-core": "^11.5.24"
+	},
+	"extra": {
+		"typo3/cms": {
+			"extension-key": "autofix",
+			"cms-package-dir": "{$vendor-dir}/typo3/cms",
+			"web-dir": ".Build/Web"
+		}
+	},
+	"autoload": {
+		"psr-4": {
+			"Sypets\\Autofix\\": "Classes/"
+		}
+	}
+}

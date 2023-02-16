@@ -1,0 +1,17 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  Sypets\Autofix\:
+    resource: '../Classes/*'
+
+  Sypets\Autofix\Command\FixSlugsCommand:
+    tags:
+      - name: 'console.command'
+        command: 'autofix:fixDuplicateSlugs'
+        schedulable: true
+
+  Sypets\Autofix\Service\SlugService:
+    public: true

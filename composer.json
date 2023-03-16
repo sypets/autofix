@@ -32,7 +32,8 @@
 		"friendsofphp/php-cs-fixer": "^3.2",
 		"phpstan/phpstan": "^1.8.2",
 		"typo3/cms-core": "^11.5.24",
-		"typo3/testing-framework": "^6.16.7"
+		"typo3/testing-framework": "^6.16.7",
+		"phpunit/phpunit": "^9.6.1"
 	},
 	"extra": {
 		"typo3/cms": {

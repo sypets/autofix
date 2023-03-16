@@ -1,0 +1,9 @@
+sys_category,,,,,,,
+,uid,pid,sys_language_uid,title,slug,hidden,deleted
+,2,0,0,Duplicate,duplicate,0,0
+,3,0,0,Duplicate,duplicate,0,0
+,5,0,0,Not Duplicate because Lang,not-duplicate-lang,0,0
+,6,0,1,Not Duplicate because Lang',not-duplicate-lang,0,0
+,7,0,-1,Duplicate with Lang -1,dupe-lang-1,0,0
+,8,0,0,Duplicate with Lang -1,dupe-lang-1,0,0
+

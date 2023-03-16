@@ -1,7 +1,9 @@
 <?php
+
 declare(strict_types=1);
 namespace Sypets\Autofix\Service;
 
+use Doctrine\DBAL\Result;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
@@ -35,7 +37,10 @@ class SlugService
         if ($this->slugHelpers[$table][$field] ?? false) {
             return $this->slugHelpers[$table][$field];
         }
-        $slugHelper = GeneralUtility::makeInstance(SlugHelper::class, $table, $field,
+        $slugHelper = GeneralUtility::makeInstance(
+            SlugHelper::class,
+            $table,
+            $field,
             $GLOBALS['TCA'][$table]['columns'][$field]['config']
         );
         $this->slugHelpers[$table][$field] = $slugHelper;
@@ -102,54 +107,52 @@ class SlugService
         $uniqueType = $this->getUniqueType($table, $field);
         if ($uniqueType !== self::UNIQUE_TYPE_UNIQUE
             && $uniqueType !== self::UNIQUE_TYPE_IN_PID) {
-            $reason = sprintf('SKIP: table %s field %s: we do not currently support uniqueInSite',
-                $table, $field);
+            $reason = sprintf(
+                'SKIP: table %s field %s: we do not currently support uniqueInSite',
+                $table,
+                $field
+            );
             return false;
         }
 
         return true;
     }
 
-    protected function getLanguageFieldName(string $table): string
+    public function getLanguageFieldName(string $table): string
     {
         return $GLOBALS['TCA'][$table]['ctrl']['languageField'] ?? '';
     }
 
-    protected function getUniqueType(string $table, string $field): string
+    public function getUniqueType(string $table, string $field): string
     {
         $eval = explode(',', $GLOBALS['TCA'][$table]['columns'][$field]['config']['eval'] ?? '');
         if (in_array(self::UNIQUE_TYPE_UNIQUE, $eval, true)) {
             return self::UNIQUE_TYPE_UNIQUE;
-        } else if (in_array(self::UNIQUE_TYPE_IN_SITE, $eval, true)) {
+        }
+        if (in_array(self::UNIQUE_TYPE_IN_SITE, $eval, true)) {
             return self::UNIQUE_TYPE_IN_SITE;
-        } else if (in_array(self::UNIQUE_TYPE_IN_PID, $eval, true)) {
+        }
+        if (in_array(self::UNIQUE_TYPE_IN_PID, $eval, true)) {
             return self::UNIQUE_TYPE_IN_PID;
         }
         return '';
     }
 
-    /**
-     * @param string $table
-     * @param string $field
-     * @return mixed
-     */
-    public function fetchRowsWithMissingSlugsForTableFieldStatement(string $table, string $field)
+    public function fetchRowsWithMissingSlugsForTableFieldStatement(string $table, string $field): Result
     {
-        $queryBuilder = $this->generateQueryBuilderForFindingRecordsWithoutSlugs($table,
-            $field);
-        $statement = $queryBuilder->execute();
+        $queryBuilder = $this->generateQueryBuilderForFindingRecordsWithoutSlugs(
+            $table,
+            $field
+        );
+        $statement = $queryBuilder->executeQuery();
         return $statement;
     }
 
     /**
      * Fetch next row with missing slug and return array with new slug
-     *
-     * @param $statement
-     * @param string $table
-     * @param string $field
-     * @return array|false[]
+     * @return array<string,mixed>
      */
-    public function getNextRowWithMissingSlugs($statement, string $table, string $field): array
+    public function getNextRowWithMissingSlugs(Result $statement, string $table, string $field): array
     {
         $result = [
             'convert' => false
@@ -196,7 +199,7 @@ class SlugService
      *
      * @param string $table
      * @param string $field
-     * @return \Doctrine\DBAL\Result|int
+     * @return Result
      * @throws \Doctrine\DBAL\DBALException
      */
     public function fetchDuplicateSlugsForTableFieldStatement(string $table, string $field)
@@ -204,31 +207,31 @@ class SlugService
         $uniqueType = $this->getUniqueType($table, $field);
         $languageFieldName = $this->getLanguageFieldName($table);
 
-        $queryBuilder = $this->generateQueryBuilderForFindingRecordsWithDuplicateSlugs($uniqueType, $table,
-            $field, $languageFieldName);
-        return $queryBuilder->execute();
+        $queryBuilder = $this->generateQueryBuilderForFindingRecordsWithDuplicateSlugs(
+            $uniqueType,
+            $table,
+            $field,
+            $languageFieldName
+        );
+        return $queryBuilder->executeQuery();
     }
 
     /**
-     * @param \Doctrine\DBAL\Result|int $statement
-     * @return array
+     * @return array<string,mixed>
+     * @throws \Doctrine\DBAL\Driver\Exception
      */
-    public function getNextRowWithDuplicateSlug($statement, string $table, string $field): array
+    public function getNextRowWithDuplicateSlug(Result $statement, string $table, string $field): array
     {
         $result = [
             'convert' => false
         ];
 
         if ($row = $statement->fetchAssociative()) {
-            $uid = $row['uid'] ?? false;
-            $pid = $row['pid'] ?? false;
+            $uid = (int)($row['uid'] ?? 0);
+            $pid = (int)($row['pid'] ?? 0);
             $slug = $row[$field] ?? '';
             if (!$uid) {
                 // missing uid, skip
-                return $result;
-            }
-            if (!$pid) {
-                // missing pid, skip
                 return $result;
             }
             // empty slug: skip
@@ -256,9 +259,18 @@ class SlugService
         return [];
     }
 
+    /**
+     * @param string $table
+     * @param string $field
+     * @param string $slug
+     * @param array<string,mixed> $row
+     * @param int $uid
+     * @param int $pid
+     * @return string
+     * @throws \TYPO3\CMS\Core\Exception\SiteNotFoundException
+     */
     public function getUniqueSlug(string $table, string $field, string $slug, array $row, int $uid, int $pid): string
     {
-        // todo: initialize this only once?
         $slugHelper = $this->generateSlugHelper($table, $field);
         $uniqueType = $this->getUniqueType($table, $field);
         $state = RecordStateFactory::forName($table)
@@ -271,7 +283,8 @@ class SlugService
                 throw new \InvalidArgumentException(
                     sprintf(
                         'Slug type for table <%s> field <%s> is not a supported type',
-                        $table, $field
+                        $table,
+                        $field
                     )
                 );
         }
@@ -289,9 +302,12 @@ class SlugService
             ->executeStatement();
     }
 
-    protected function generateQueryBuilderForFindingRecordsWithDuplicateSlugs(string $uniqueType, string $table, string $slugField,
-        string $languageFieldName): QueryBuilder
-    {
+    protected function generateQueryBuilderForFindingRecordsWithDuplicateSlugs(
+        string $uniqueType,
+        string $table,
+        string $slugField,
+        string $languageFieldName
+    ): QueryBuilder {
         $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
         $queryBuilder->select('t2.*')
             ->from($table);
@@ -312,8 +328,9 @@ class SlugService
                 $queryBuilder->expr()->eq('t2.' . $languageFieldName, $queryBuilder->createNamedParameter(-1, \PDO::PARAM_INT)),
                 $queryBuilder->expr()->eq('t2.' . $languageFieldName, $queryBuilder->quoteIdentifier($table . '.' . $languageFieldName))
             )
-        // DISTINCT by uid
-        )->groupBy('t2.uid');
+            // DISTINCT by uid
+        )
+        ->orderBy('t2.uid');
         switch ($uniqueType) {
             case self::UNIQUE_TYPE_UNIQUE:
                 return $queryBuilder;
@@ -321,7 +338,6 @@ class SlugService
                 $queryBuilder->andWhere(
                     $queryBuilder->expr()->eq($table . '.pid', $queryBuilder->quoteIdentifier('t2.pid')),
                 );
-
         }
         return $queryBuilder;
     }
@@ -337,8 +353,11 @@ class SlugService
             ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
         $queryBuilder
             ->where(
-                // slug is empty
-                $queryBuilder->expr()->eq($slugField, $queryBuilder->createNamedParameter(''))
+                $queryBuilder->expr()->or(
+                    // slug is empty
+                    $queryBuilder->expr()->eq($slugField, $queryBuilder->createNamedParameter('')),
+                    $queryBuilder->expr()->isNull($slugField)
+                )
             );
         return $queryBuilder;
     }

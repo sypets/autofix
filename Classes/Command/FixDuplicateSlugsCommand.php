@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 namespace Sypets\Autofix\Command;
 
@@ -68,7 +69,7 @@ class FixDuplicateSlugsCommand extends AbstractCommand
             $this->io->writeln(sprintf('table=<%s> uid=<%d> old slug=<%s> new slug=<%s>', $table, $uid, $slug, $newSlug));
             if ($this->interactive &&
                 $this->askProceed('Convert now?') !== true) {
-                        continue;
+                continue;
             }
             if (!$this->dryRun) {
                 $this->slugService->updateSlug($table, $uid, $field, $newSlug);
@@ -88,7 +89,6 @@ class FixDuplicateSlugsCommand extends AbstractCommand
             } else {
                 $this->io->warning('No convertible slug field, reason:' . $reason);
             }
-
         }
         if ($table) {
             $tables = [$table];

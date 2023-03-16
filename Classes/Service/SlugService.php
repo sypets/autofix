@@ -16,7 +16,6 @@ class SlugService
     protected const UNIQUE_TYPE_IN_PID = 'uniqueInPid';
 
     protected const EXCLUDE_TABLES = [
-        'pages',
         'sys_history',
         'sys_log',
         'sys_refindex',
@@ -43,6 +42,14 @@ class SlugService
         return $slugHelper;
     }
 
+    /**
+     * Check if a field is a valid slug field (also checks list of excluded tables)
+     *
+     * @param string $table
+     * @param string $field
+     * @param string $reason
+     * @return bool
+     */
     public function isSlugField(string $table, string $field, string &$reason): bool
     {
         // check if in list of exclude tables
@@ -70,6 +77,14 @@ class SlugService
         return true;
     }
 
+    /**
+     * Check if deduplicating on this slug field by language is possible
+     *
+     * @param string $table
+     * @param string $field
+     * @param string $reason
+     * @return bool
+     */
     public function isSlugFieldForDeduplicating(string $table, string $field, string &$reason): bool
     {
         if (!$this->isSlugField($table, $field, $reason)) {
@@ -95,7 +110,7 @@ class SlugService
         return true;
     }
 
-    protected function getLanguageFieldName(string $table, string $field): string
+    protected function getLanguageFieldName(string $table): string
     {
         return $GLOBALS['TCA'][$table]['ctrl']['languageField'] ?? '';
     }
@@ -113,53 +128,153 @@ class SlugService
         return '';
     }
 
-    public function fetchDuplicateSlugsForTableField(string $table, string $field): array
+    /**
+     * @param string $table
+     * @param string $field
+     * @return mixed
+     */
+    public function fetchRowsWithMissingSlugsForTableFieldStatement(string $table, string $field)
     {
-        $convertibleSlugs = [];
+        $queryBuilder = $this->generateQueryBuilderForFindingRecordsWithoutSlugs($table,
+            $field);
+        $statement = $queryBuilder->execute();
+        return $statement;
+    }
+
+    /**
+     * Fetch next row with missing slug and return array with new slug
+     *
+     * @param $statement
+     * @param string $table
+     * @param string $field
+     * @return array|false[]
+     */
+    public function getNextRowWithMissingSlugs($statement, string $table, string $field): array
+    {
+        $result = [
+            'convert' => false
+        ];
+
+        // todo: initialize this only once?
         $slugHelper = $this->generateSlugHelper($table, $field);
+
+        if ($row = $statement->fetchAssociative()) {
+            $uid = $row['uid'] ?? false;
+            // pid can be 0
+            $pid = $row['pid'] ?? 0;
+            $slug = $row[$field] ?? '';
+            if (!$uid) {
+                // missing uid, skip
+                return $result;
+            }
+
+            $newSlug = $slugHelper->generate($row, $pid);
+            if ($newSlug) {
+                // !!! generate apparently does no duplicate check, so we must do this here!
+                $newSlug = $this->getUniqueSlug($table, $field, $newSlug, $row, $uid, $pid);
+                $result = [
+                    'uid' => $uid,
+                    'slug' => $slug,
+                    'newSlug' => $newSlug,
+                    'convert' => true,
+                ];
+                return $result;
+            }
+        }
+        return [];
+    }
+
+    /**
+     * Get the db statement to fetch individual results.
+     *
+     * We fetch and convert Slugs one at a time (otherwise we fetch all in an array and convert
+     * some to the same duplicates), e.g.
+     * 1. 'sameslug' converted to => 'sameslug-1'
+     * 2. 'sameslug' converted to => 'sameslug-1'
+     *
+     * We must update the DB entry for the first samelug before calculating the new value for the second sameslug.
+     *
+     * @param string $table
+     * @param string $field
+     * @return \Doctrine\DBAL\Result|int
+     * @throws \Doctrine\DBAL\DBALException
+     */
+    public function fetchDuplicateSlugsForTableFieldStatement(string $table, string $field)
+    {
         $uniqueType = $this->getUniqueType($table, $field);
-        $languageFieldName = $this->getLanguageFieldName($table, $field);
+        $languageFieldName = $this->getLanguageFieldName($table);
 
         $queryBuilder = $this->generateQueryBuilderForFindingRecordsWithDuplicateSlugs($uniqueType, $table,
             $field, $languageFieldName);
-        $statement = $queryBuilder->execute();
-        while ($row = $statement->fetchAssociative()) {
+        return $queryBuilder->execute();
+    }
+
+    /**
+     * @param \Doctrine\DBAL\Result|int $statement
+     * @return array
+     */
+    public function getNextRowWithDuplicateSlug($statement, string $table, string $field): array
+    {
+        $result = [
+            'convert' => false
+        ];
+
+        if ($row = $statement->fetchAssociative()) {
             $uid = $row['uid'] ?? false;
             $pid = $row['pid'] ?? false;
             $slug = $row[$field] ?? '';
             if (!$uid) {
                 // missing uid, skip
-                continue;
+                return $result;
             }
             if (!$pid) {
                 // missing pid, skip
-                continue;
+                return $result;
             }
             // empty slug: skip
             if (!$slug) {
                 // empty slug, skip
-                continue;
+                return $result;
             }
-            $state = RecordStateFactory::forName($table)
-                ->fromArray($row, $pid, $uid);
 
-            switch ($uniqueType) {
-                case 'unique':
-                    $newSlug = $slugHelper->buildSlugForUniqueInTable($slug, $state);
-                    if ($slug === $newSlug) {
-                        // old slug equals new slug, should not happen! (old slug=<%s> new slug=<%s>)', $table, $uid, $slug, $newSlug
-                        continue 2;
-                    }
-                    $convertibleSlugs[] = [
-                        'table' => $table,
-                        'field' => $field,
-                        'uid' => $uid,
-                        'slug' => $slug,
-                        'newSlug' => $newSlug,
-                    ];
+            $newSlug = $this->getUniqueSlug($table, $field, $slug, $row, $uid, $pid);
+            if ($slug === $newSlug) {
+                // old slug equals new slug, should not happen!
+                return $result;
             }
+            $result = [
+                'table' => $table,
+                'field' => $field,
+                'uid' => $uid,
+                'slug' => $slug,
+                'newSlug' => $newSlug,
+                'convert' => true,
+            ];
+            return $result;
         }
-        return $convertibleSlugs;
+        // will abort loop
+        return [];
+    }
+
+    public function getUniqueSlug(string $table, string $field, string $slug, array $row, int $uid, int $pid): string
+    {
+        // todo: initialize this only once?
+        $slugHelper = $this->generateSlugHelper($table, $field);
+        $uniqueType = $this->getUniqueType($table, $field);
+        $state = RecordStateFactory::forName($table)
+            ->fromArray($row, $pid, $uid);
+
+        switch ($uniqueType) {
+            case 'unique':
+                return $slugHelper->buildSlugForUniqueInTable($slug, $state);
+            default:
+                throw new \InvalidArgumentException(
+                    sprintf(
+                        'Slug type for table <%s> field <%s> is not a supported type',
+                        $table, $field
+                    )
+                );
+        }
     }
 
     public function updateSlug(string $table, int $uid, string $slugField, string $slugValue): void
@@ -178,7 +293,6 @@ class SlugService
         string $languageFieldName): QueryBuilder
     {
         $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
-        //$queryBuilder->select('t2.uid', 't2.pid', 't2.' . $slugField)
         $queryBuilder->select('t2.*')
             ->from($table);
         $queryBuilder->getRestrictions()
@@ -198,10 +312,8 @@ class SlugService
                 $queryBuilder->expr()->eq('t2.' . $languageFieldName, $queryBuilder->createNamedParameter(-1, \PDO::PARAM_INT)),
                 $queryBuilder->expr()->eq('t2.' . $languageFieldName, $queryBuilder->quoteIdentifier($table . '.' . $languageFieldName))
             )
-        // DISTINCT by uid,pid,slug
-        )->groupBy('t2.uid')
-            ->addGroupBy('t2.' . $slugField)
-            ->addGroupBy('t2.pid');
+        // DISTINCT by uid
+        )->groupBy('t2.uid');
         switch ($uniqueType) {
             case self::UNIQUE_TYPE_UNIQUE:
                 return $queryBuilder;
@@ -211,6 +323,23 @@ class SlugService
                 );
 
         }
+        return $queryBuilder;
+    }
+
+    protected function generateQueryBuilderForFindingRecordsWithoutSlugs(string $table, string $slugField): QueryBuilder
+    {
+        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
+        $queryBuilder->select('*')
+            ->from($table);
+        $queryBuilder
+            ->getRestrictions()
+            ->removeAll()
+            ->add(GeneralUtility::makeInstance(DeletedRestriction::class));
+        $queryBuilder
+            ->where(
+                // slug is empty
+                $queryBuilder->expr()->eq($slugField, $queryBuilder->createNamedParameter(''))
+            );
         return $queryBuilder;
     }
 }

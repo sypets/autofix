@@ -7,10 +7,16 @@ services:
   Sypets\Autofix\:
     resource: '../Classes/*'
 
-  Sypets\Autofix\Command\FixSlugsCommand:
+  Sypets\Autofix\Command\FixDuplicateSlugsCommand:
     tags:
       - name: 'console.command'
         command: 'autofix:fixDuplicateSlugs'
+        schedulable: true
+
+  Sypets\Autofix\Command\GenerateSlugsCommand:
+    tags:
+      - name: 'console.command'
+        command: 'autofix:generateSlugs'
         schedulable: true
 
   Sypets\Autofix\Service\SlugService:

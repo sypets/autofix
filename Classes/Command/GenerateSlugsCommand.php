@@ -8,16 +8,11 @@ use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Sypets\Autofix\Service\SlugService;
 
 /**
- * Fix duplicate slugs (slugs with same language or slugs with one entry with language -1).
- * This was due to bug https://forge.typo3.org/issues/99529 which is now fixed. The core
- * bug is fixed, but records with duplicate slugs might previously have been created.
+ * Generate slugs. There is also an upgrade wizard for this, but this command
+ * can be used to explicitly generate slugs for one table only, e.g. sys_category.
  *
- * In order for this script to work, a TYPO3 version with the fixed bug must be installed, because
- * core functionality is used!
- *
- * @todo Currently, eval type "uniqueInSite" is not supported, should support uniqueInSite as well
  */
-class FixSlugsCommand extends AbstractCommand
+class GenerateSlugsCommand extends AbstractCommand
 {
     protected ?SlugService $slugService = null;
 
@@ -44,22 +39,24 @@ class FixSlugsCommand extends AbstractCommand
         $table = $input->getArgument('table') ?: '';
         $field = $input->getArgument('field') ?: '';
 
-        $this->generateAllDuplicateSlugs($table, $field);
+        $this->generateAllSlugs($table, $field);
 
         return 0;
     }
 
-    protected function convertDuplicateSlugsForTableField(string $table, string $field): void
+    protected function generateSlugsForTableField(string $table, string $field): void
     {
         $this->io->section(sprintf('table=%s, field=%s', $table, $field));
-        $convertibleSlugs =  $this->slugService->fetchDuplicateSlugsForTableField($table, $field);
+        $statement =  $this->slugService->fetchRowsWithMissingSlugsForTableFieldStatement($table, $field);
         $countConverted = 0;
-        foreach ($convertibleSlugs as $convertibleSlug) {
-            $table = $convertibleSlug['table'];
-            $uid = $convertibleSlug['uid'];
-            $field = $convertibleSlug['field'];
-            $slug = $convertibleSlug['slug'];
-            $newSlug = $convertibleSlug['newSlug'];
+        while ($row = $this->slugService->getNextRowWithMissingSlugs($statement, $table, $field)) {
+            $convert = $row['convert'] ?? false;
+            if (!$convert) {
+                continue;
+            }
+            $uid = (int)($row['uid'] ?? 0);
+            $slug = $row['slug'];
+            $newSlug = $row['newSlug'];
 
             $this->io->writeln(sprintf('table=<%s> uid=<%d> old slug=<%s> new slug=<%s>', $table, $uid, $slug, $newSlug));
             if ($this->interactive &&
@@ -74,13 +71,13 @@ class FixSlugsCommand extends AbstractCommand
         $this->io->writeln($countConverted . ' converted');
     }
 
-    protected function generateAllDuplicateSlugs(string $table = '', string $field = ''): bool
+    protected function generateAllSlugs(string $table = '', string $field = ''): bool
     {
         $reason = '';
         if ($table && $field) {
             $this->io->section(sprintf('table=%s, field=%s', $table, $field));
             if ($this->slugService->isSlugFieldForDeduplicating($table, $field, $reason)) {
-                $this->convertDuplicateSlugsForTableField($table, $field);
+                $this->generateSlugsForTableField($table, $field);
             } else {
                 $this->io->warning('No convertible slug field, reason:' . $reason);
             }
@@ -98,7 +95,7 @@ class FixSlugsCommand extends AbstractCommand
                     // no convertible slug field
                     continue;
                 }
-                $this->convertDuplicateSlugsForTableField($currentTable, $currentField);
+                $this->generateSlugsForTableField($currentTable, $currentField);
             }
         }
 

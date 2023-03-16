@@ -162,9 +162,9 @@ class SlugService
         $slugHelper = $this->generateSlugHelper($table, $field);
 
         if ($row = $statement->fetchAssociative()) {
-            $uid = $row['uid'] ?? false;
+            $uid = (int)($row['uid'] ?? 0);
             // pid can be 0
-            $pid = $row['pid'] ?? 0;
+            $pid = (int)($row['pid'] ?? 0);
             $slug = $row[$field] ?? '';
             if (!$uid) {
                 // missing uid, skip

@@ -1,0 +1,5 @@
+sys_category,,,,,,,
+,uid,pid,sys_language_uid,title,slug,hidden,deleted
+,1,0,0,No slug,,0,0
+,2,0,0,No slug,,0,0
+,3,0,0,Already has no-slug,no-slug,0,0

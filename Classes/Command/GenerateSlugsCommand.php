@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 namespace Sypets\Autofix\Command;
 
@@ -10,7 +11,6 @@ use Sypets\Autofix\Service\SlugService;
 /**
  * Generate slugs. There is also an upgrade wizard for this, but this command
  * can be used to explicitly generate slugs for one table only, e.g. sys_category.
- *
  */
 class GenerateSlugsCommand extends AbstractCommand
 {
@@ -49,19 +49,25 @@ class GenerateSlugsCommand extends AbstractCommand
         $this->io->section(sprintf('table=%s, field=%s', $table, $field));
         $statement =  $this->slugService->fetchRowsWithMissingSlugsForTableFieldStatement($table, $field);
         $countConverted = 0;
+        $converted = [];
         while ($row = $this->slugService->getNextRowWithMissingSlugs($statement, $table, $field)) {
-            $convert = $row['convert'] ?? false;
+            $convert = $row['convert'];
             if (!$convert) {
                 continue;
             }
             $uid = (int)($row['uid'] ?? 0);
+            if (in_array($uid, $converted)) {
+                // skip
+                continue;
+            }
+            $converted[] = $uid;
             $slug = $row['slug'];
             $newSlug = $row['newSlug'];
 
             $this->io->writeln(sprintf('table=<%s> uid=<%d> old slug=<%s> new slug=<%s>', $table, $uid, $slug, $newSlug));
             if ($this->interactive &&
                 $this->askProceed('Convert now?') !== true) {
-                        continue;
+                continue;
             }
             if (!$this->dryRun) {
                 $this->slugService->updateSlug($table, $uid, $field, $newSlug);
@@ -81,7 +87,6 @@ class GenerateSlugsCommand extends AbstractCommand
             } else {
                 $this->io->warning('No convertible slug field, reason:' . $reason);
             }
-
         }
         if ($table) {
             $tables = [$table];
